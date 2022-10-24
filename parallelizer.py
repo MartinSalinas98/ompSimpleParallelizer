@@ -127,8 +127,8 @@ def argparser():
         # If param was provided, arg min count increases by 2
         MINIMUM_N_ARGS += 2
         # Checking that introduced number of threads is actually a number
-        if sys.argv[indexOfNumThreads].isnumeric() or int(sys.argv[indexOfNumThreads]) < 1:
-            print("ERROR: Number of threads has to be an integer greater than 0..\n"
+        if not sys.argv[indexOfNumThreads].isnumeric() or int(sys.argv[indexOfNumThreads]) < 1:
+            print("ERROR: Number of threads has to be an integer greater than 0.\n"
                 "\tUse --help for more info.")
             sys.exit(1)
         # Converting number of threads from str to int
