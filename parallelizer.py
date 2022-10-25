@@ -21,7 +21,7 @@ import os, sys, subprocess, re
 # Declaring global variables
 COMPILE_CMD = 'make'        # Compile command
 CLEAN_CMD = 'make clean'    # Remove objects and executables command
-N_EXECUTIONS = 5            # Number of times each code variant will be run to get an average
+DEFAULT_N_EXECUTIONS = 5    # Default number of times each code variant will be run to get an average
 DEFAULT_N_THREADS = 2       # Default number of threads to modify the source file with after sequential execution
 
 def argparser():
@@ -47,11 +47,13 @@ def argparser():
             "\t\t\tLine numbers must be separated with commas without spaces. First line in a file is line 1.\n")
         print("\t--directives:\tPath to file containing parallelization directives. It can be a relative or absolute path.\n"
             "\t\t\tThis file must contain all the parallelization directives, one for each line.\n")
-        print("\t--num_threads:\t(Optional) New number of threads to set after sequential execution.\n"
-            "\t\t\It has to be an integer greater than 0.\n")
+        print("\t--num_threads:\t(Optional) List of new number of threads to set after sequential execution.\n"
+            "\t\tThread numbers must be separated with commas without spaces. Each value has to be an integer greater than 1.\n")
         print("\t--save_results:\t(Optional) If used, stdout prints produced by this script will also be saved to a file.\n"
-            "\t\t\A destination filename must be introduced\n")
-        print("\t\t\tExample: python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2 --save_results results.txt")
+            "\t\tA destination filename must be introduced.\n")
+        print("\t--n_executions:\t(Optional) Number of times the script will execute each code variant to get an average.\n"
+            "\t\tDefault value is number of executions is 5.\n")
+        print("\t\t\tExample: python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2,3,4 --save_results results.txt --n_executions 10")
         sys.exit(0)
     
     # Checking if input file was provided
@@ -126,15 +128,19 @@ def argparser():
             sys.exit(1)
         # If param was provided, arg min count increases by 2
         MINIMUM_N_ARGS += 2
-        # Checking that introduced number of threads is actually a number
-        if not sys.argv[indexOfNumThreads].isnumeric() or int(sys.argv[indexOfNumThreads]) < 1:
-            print("ERROR: Number of threads has to be an integer greater than 0.\n"
-                "\tUse --help for more info.")
-            sys.exit(1)
-        # Converting number of threads from str to int
-        numThreads = int(sys.argv[indexOfNumThreads])
+        # Checking if all lines are a number
+        rawNThreads = sys.argv[indexOfNumThreads].split(',')
+        numThreads = []
+        for threadN in rawNThreads:
+            if not threadN.isnumeric() or int(threadN) < 2:
+                print("ERROR: Thread numbers need to be integers greater than 1 separated by commas, but provided {} in {}\n"
+                "\tUse --help for more info.".format(threadN, rawNThreads))
+                sys.exit(1)
+            numThreads.append(int(threadN))
+        # Removing possible duplicates
+        numThreads = list(dict.fromkeys(numThreads))
     else:
-        numThreads = DEFAULT_N_THREADS
+        numThreads = [DEFAULT_N_THREADS]
 
     # Checking if save_results param was provided
     if "--save_results" in sys.argv:
@@ -150,8 +156,28 @@ def argparser():
         outputFile = os.path.abspath(sys.argv[indexOfSaveResults])
     else:
         outputFile = None
+    
+    # Checking if n_executions param was provided
+    if "--n_executions" in sys.argv:
+        # Getting index of n_executions
+        indexOfNExecutions = sys.argv.index("--n_executions") + 1
+        # Check if number of executions was provided for n_executions param
+        if len(sys.argv) == MINIMUM_N_ARGS or sys.argv[indexOfNExecutions].startswith("--"):
+            print("ERROR: --n_executions param introduced but no number of executions was introduced.\n"
+                "\tUse --help for more info.")
+            sys.exit(1)
+        # If param was provided, arg min count increases by 2
+        MINIMUM_N_ARGS += 2
+        # Checking that introduced number of executions is actually a number higher than 0
+        if not sys.argv[indexOfNExecutions].isnumeric() or int(sys.argv[indexOfNExecutions]) < 1:
+            print("ERROR: Number of executions has to be an integer greater than 0.\n"
+                "\tUse --help for more info.")
+            sys.exit(1)
+        nExecutions = int(sys.argv[indexOfNExecutions])
+    else:
+        nExecutions = DEFAULT_N_EXECUTIONS
 
-    return os.path.abspath(sys.argv[indexOfSource]), lines, directives, numThreads, outputFile
+    return os.path.abspath(sys.argv[indexOfSource]), lines, directives, numThreads, outputFile, nExecutions
 
 def showFileError(e):
     """
@@ -176,18 +202,18 @@ def readFile(path):
     except Exception as e:
         showFileError(e)
 
-def execute(source):
+def execute(source, nExecutions):
     """
     This function compiles the source file, runs it, and cleans temporary files.
-    Execution is carried out N_EXECUTIONS times and average result is returned.
+    Execution is carried out nExecutions times and average result is returned.
     Returns: execution 'Wall time' (str)
     """
     # Getting executable name from source file
     executable = os.path.splitext(source)[0]
 
-    # Compile and run given code to get run time N_EXECUTIONS times
+    # Compile and run given code to get run time nExecutions times
     outputs = []
-    for i in range(N_EXECUTIONS):
+    for i in range(nExecutions):
         subprocess.run(COMPILE_CMD)
         subprocess.Popen('chmod +x {}'.format(executable).split(), stdout=subprocess.PIPE).communicate()
         output = subprocess.Popen(executable.split(), stdout=subprocess.PIPE).communicate()[0]
@@ -258,47 +284,55 @@ def getOutput(path, mode, string):
 
 if __name__ == "__main__":
     # Getting arguments from argparser
-    source, lines, directives, numThreads, outputPath = argparser()
+    source, lines, directives, numThreadsList, outputPath, nExecutions = argparser()
 
     # Reading source file content
     fileContent = readFile(source)
 
     # Compile and run original code to get sequential time
     getOutput(outputPath, "w", "Running original source to extract sequential time")
-    sequentialTime = execute(source)
+    sequentialTime = execute(source, nExecutions)
     getOutput(outputPath, "a", "Sequential time: {}".format(sequentialTime))
 
-    # For each line selected, run each written directive and get results
+    # For each number of threads, for each line selected, run each written directive and get results
     totalResults = []
-    for codeLine in lines:
-        lineResults = []
-        for directive in directives:
-            # If line is just line break or empty line, skip
-            if directive == '' or directive == '\n':
-                continue
-            writeFile(source, fileContent, numThreads, codeLine, directive)
-            result = execute(source)
-            getOutput(outputPath, "a", "Results with directive \"{}\" and {} threads in line {}: {} ms".format(directive, numThreads, codeLine, result))
-            lineResults.append(result)
-        totalResults.append(lineResults)
+    for numThreads in numThreadsList:
+        threadResults = []
+        for codeLine in lines:
+            lineResults = []
+            for directive in directives:
+                # If line is just line break or empty line, skip
+                if directive == '' or directive == '\n':
+                    continue
+                writeFile(source, fileContent, numThreads, codeLine, directive)
+                result = execute(source, nExecutions)
+                getOutput(outputPath, "a", "Results with directive \"{}\" and {} threads in line {}: {} ms".format(directive, numThreads, codeLine, result))
+                lineResults.append(result)
+            threadResults.append(lineResults)
+        totalResults.append(threadResults)
     
     # Write source file back to original state
     writeToOriginal(source, fileContent)
 
     # Flattening results
     flatResults = []
-    for lineResults in totalResults:
-        for runTime in lineResults:
-            flatResults.append(runTime)
+    for threadResults in totalResults:
+        for lineResults in threadResults:
+            for runTime in lineResults:
+                flatResults.append(runTime)
     
     # Getting fastest run time and index for reference
     fastest = min(flatResults)
     fastestIdx = flatResults.index(fastest)
 
-    # Getting index in original result matrix
-    row = int(fastestIdx/len(totalResults[0]))
-    column = fastestIdx % len(totalResults[0])
-    getOutput(outputPath, "a", "The best parallelization was obtained in line {} using directive \"{}\" with a runtime of {} ms".format(lines[row], directives[column], fastest))
+    # Getting index in original result matrix (totalResults[numThreadsIdx][row][column])
+    linesDirsMatrixLen = len(totalResults[0])*len(totalResults[0][0])   # Length of 2D matrix of lines and directives
+    numThreadsIdx = int(fastestIdx/linesDirsMatrixLen)                  # Index of lines-directives 2D matrix (index in n_threads array)
+    numThreads = numThreadsList[numThreadsIdx]                          # Actual number of threads
+    fastestIdxIn2D = fastestIdx-(numThreadsIdx*linesDirsMatrixLen)      # fastest index within its 2D lines and directives matrix
+    row = int(fastestIdxIn2D/len(totalResults[0]))                      # fastest row index within its 2D lines and directives matrix
+    column = fastestIdxIn2D % len(totalResults[0][0])                   # fastest column index within its 2D lines and directives matrix
+    getOutput(outputPath, "a", "The best parallelization was obtained with {} threads in line {} using directive \"{}\" with a runtime of {} ms".format(numThreads, lines[row], directives[column], fastest))
 
     # Calculating speedup and efficiency
     speedup = round(sequentialTime/fastest, 2)
