@@ -206,7 +206,7 @@ def readFile(path):
     except Exception as e:
         showFileError(e)
 
-def execute(source, nExecutions, workingDir):
+def execute(source, nExecutions):
     """
     This function compiles the source file, runs it, and cleans temporary files.
     Execution is carried out nExecutions times and average result is returned.
@@ -215,10 +215,6 @@ def execute(source, nExecutions, workingDir):
     # Getting executable name from source file
     executable = os.path.splitext(source)[0]
 
-    # If a working directory has been set, change to it
-    if workingDir:
-        os.chdir(workingDir)
-    
     # Compile and run given code to get run time nExecutions times
     outputs = []
     for i in range(nExecutions):
@@ -297,9 +293,13 @@ if __name__ == "__main__":
     # Reading source file content
     fileContent = readFile(source)
 
+    # If a working directory has been set, change to it
+    if workingDir:
+        os.chdir(workingDir)
+
     # Compile and run original code to get sequential time
     getOutput(outputPath, "w", "Running original source to extract sequential time")
-    sequentialTime = execute(source, nExecutions, workingDir)
+    sequentialTime = execute(source, nExecutions)
     getOutput(outputPath, "a", "Sequential time: {}".format(sequentialTime))
 
     # For each number of threads, for each line selected, run each written directive and get results
@@ -313,7 +313,7 @@ if __name__ == "__main__":
                 if directive == '' or directive == '\n':
                     continue
                 writeFile(source, fileContent, numThreads, codeLine, directive)
-                result = execute(source, nExecutions, workingDir)
+                result = execute(source, nExecutions)
                 getOutput(outputPath, "a", "Results with directive \"{}\" and {} threads in line {}: {} ms".format(directive, numThreads, codeLine, result))
                 lineResults.append(result)
             threadResults.append(lineResults)
