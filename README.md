@@ -1,7 +1,7 @@
 # ompSimpleParallelizer
 A simple parallelizer for Open MP.
 
-**This script is used to parallelize with open mp. It makes a few asumptions:**<br>
+**This script is used to parallelize with OpenMP. It makes a few asumptions:**<br>
 - First one is that there is a makefile set up so running `make` will compile the program generating the executable file.<br>
 - Second, the same makefile has a `make clean` command that removes object and executable files.<br>
 - Third, you only need to use one directive at a time, not even between multiple lines.<br>
