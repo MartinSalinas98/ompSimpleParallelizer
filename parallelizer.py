@@ -1,20 +1,3 @@
-"""
-This script is used to parallelize with open mp. It makes a few asumptions:
-    - First one is that there is a makefile in the same directory the script is in, set up so running 'make'
-      will compile the program generating the executable file.
-    - Second, the same makefile has a 'make clean' command that removes object and executable files.
-    - Third, you only need to use one directive at a time, not even between multiple lines.
-    - Fourth, you have created a text file containing one directive for each line of the file, whose path
-      you will send to the script via the --directives param.
-    
-What this script does:
-    - Compiles and runs the original file to get sequential time.
-    - After that, parallelization begins. For each line chosen to be parallelized, the script will modify the original
-      source file to include a directive from the directives file, and then run it and store the results, also modifying
-      the number of threads.
-    - Then, the fastest run time will be extracted, referencing the line it parallelized and the directive used for it.
-    - Finally, the speedup and efficiency will be calculated with this fastest run time.
-"""
 # Necessary imports
 import os, sys, subprocess, re
 
@@ -53,7 +36,9 @@ def argparser():
             "\t\tA destination filename must be introduced.\n")
         print("\t--n_executions:\t(Optional) Number of times the script will execute each code variant to get an average.\n"
             "\t\tDefault value is number of executions is 5.\n")
-        print("\t\t\tExample: python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2,3,4 --save_results results.txt --n_executions 10")
+        print("\t--working_dir:\t(Optional) Defines the directory where the makefile and executable files are located.\n"
+            "\t\It can be a relative or absolute path.\n")
+        print("\t\t\tExample: python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2,3,4 --save_results results.txt --n_executions 10 --working_dir mydir/")
         sys.exit(0)
     
     # Checking if input file was provided
@@ -176,8 +161,27 @@ def argparser():
         nExecutions = int(sys.argv[indexOfNExecutions])
     else:
         nExecutions = DEFAULT_N_EXECUTIONS
+    
+    # Checking if working_dir param was provided
+    if "--working_dir" in sys.argv:
+        # Getting index of working_dir
+        indexOfWorkingDir = sys.argv.index("--working_dir") + 1
+        # Check if file name was provided for working_dir param
+        if len(sys.argv) == MINIMUM_N_ARGS or sys.argv[indexOfWorkingDir].startswith("--"):
+            print("ERROR: --working_dir param introduced but no working directory path was introduced.\n"
+                "\tUse --help for more info.")
+            sys.exit(1)
+        # If param was provided, arg min count increases by 2
+        MINIMUM_N_ARGS += 2
+        if not os.path.exists(sys.argv[indexOfWorkingDir]) or not os.path.isdir(sys.argv[indexOfWorkingDir]):
+            print("ERROR: Specified path to working directory does not exist or it is not a directory.\n"
+                "\tUse --help for more info.")
+            sys.exit(1)
+        workingDir = os.path.abspath(sys.argv[indexOfWorkingDir])
+    else:
+        workingDir = None
 
-    return os.path.abspath(sys.argv[indexOfSource]), lines, directives, numThreads, outputFile, nExecutions
+    return os.path.abspath(sys.argv[indexOfSource]), lines, directives, numThreads, outputFile, nExecutions, workingDir
 
 def showFileError(e):
     """
@@ -202,7 +206,7 @@ def readFile(path):
     except Exception as e:
         showFileError(e)
 
-def execute(source, nExecutions):
+def execute(source, nExecutions, workingDir):
     """
     This function compiles the source file, runs it, and cleans temporary files.
     Execution is carried out nExecutions times and average result is returned.
@@ -211,6 +215,10 @@ def execute(source, nExecutions):
     # Getting executable name from source file
     executable = os.path.splitext(source)[0]
 
+    # If a working directory has been set, change to it
+    if workingDir:
+        os.chdir(workingDir)
+    
     # Compile and run given code to get run time nExecutions times
     outputs = []
     for i in range(nExecutions):
@@ -284,14 +292,14 @@ def getOutput(path, mode, string):
 
 if __name__ == "__main__":
     # Getting arguments from argparser
-    source, lines, directives, numThreadsList, outputPath, nExecutions = argparser()
+    source, lines, directives, numThreadsList, outputPath, nExecutions, workingDir = argparser()
 
     # Reading source file content
     fileContent = readFile(source)
 
     # Compile and run original code to get sequential time
     getOutput(outputPath, "w", "Running original source to extract sequential time")
-    sequentialTime = execute(source, nExecutions)
+    sequentialTime = execute(source, nExecutions, workingDir)
     getOutput(outputPath, "a", "Sequential time: {}".format(sequentialTime))
 
     # For each number of threads, for each line selected, run each written directive and get results
@@ -305,7 +313,7 @@ if __name__ == "__main__":
                 if directive == '' or directive == '\n':
                     continue
                 writeFile(source, fileContent, numThreads, codeLine, directive)
-                result = execute(source, nExecutions)
+                result = execute(source, nExecutions, workingDir)
                 getOutput(outputPath, "a", "Results with directive \"{}\" and {} threads in line {}: {} ms".format(directive, numThreads, codeLine, result))
                 lineResults.append(result)
             threadResults.append(lineResults)
@@ -330,7 +338,7 @@ if __name__ == "__main__":
     numThreadsIdx = int(fastestIdx/linesDirsMatrixLen)                  # Index of lines-directives 2D matrix (index in n_threads array)
     numThreads = numThreadsList[numThreadsIdx]                          # Actual number of threads
     fastestIdxIn2D = fastestIdx-(numThreadsIdx*linesDirsMatrixLen)      # fastest index within its 2D lines and directives matrix
-    row = int(fastestIdxIn2D/len(totalResults[0]))                      # fastest row index within its 2D lines and directives matrix
+    row = int(fastestIdxIn2D/len(totalResults[0][0]))                   # fastest row index within its 2D lines and directives matrix
     column = fastestIdxIn2D % len(totalResults[0][0])                   # fastest column index within its 2D lines and directives matrix
     getOutput(outputPath, "a", "The best parallelization was obtained with {} threads in line {} using directive \"{}\" with a runtime of {} ms".format(numThreads, lines[row], directives[column], fastest))
 
