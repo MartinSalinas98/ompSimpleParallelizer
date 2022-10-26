@@ -30,4 +30,5 @@ A simple parallelizer for Open MP.
     --working_dir:  (Optional) Defines the directory where the makefile and executable files are located.
                     It can be a relative or absolute path.
 ```
-**Example:**<br>`python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2,3,4 --save_results results.txt --n_executions 10 --working_dir mydir/`
+**Example:**<br>
+`python3 parallelizer.py --source sourcefile.c --lines 5,6,8 --directives directives.txt --num_threads 2,3,4 --save_results results.txt --n_executions 10 --working_dir mydir/`
