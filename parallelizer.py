@@ -217,16 +217,16 @@ def execute(source, nExecutions):
 
     # Compile and run given code to get run time nExecutions times
     outputs = []
+    subprocess.run(COMPILE_CMD)
+    subprocess.Popen('chmod +x {}'.format(executable).split(), stdout=subprocess.PIPE).communicate()
     for i in range(nExecutions):
-        subprocess.run(COMPILE_CMD)
-        subprocess.Popen('chmod +x {}'.format(executable).split(), stdout=subprocess.PIPE).communicate()
         output = subprocess.Popen(executable.split(), stdout=subprocess.PIPE).communicate()[0]
-        subprocess.Popen(CLEAN_CMD.split(), stdout=subprocess.PIPE).communicate()
         # Formatting and returning output
         for line in output.decode("utf-8").split('\n'):
             if line.startswith('Wall time'):
                 outputs.append(int(re.findall(r'\b\d+\b', line)[0]))
                 break
+    subprocess.Popen(CLEAN_CMD.split(), stdout=subprocess.PIPE).communicate()
     
     return int(sum(outputs)/len(outputs))
 
